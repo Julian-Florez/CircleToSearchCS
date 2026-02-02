@@ -28,8 +28,13 @@ namespace CircleToSearchCS
         private string[] modes;
         private string[] urls;
 
-        // Agregar un Pen blanco reutilizable para el trazo
-        private readonly Pen tracePen = new Pen(Color.White, 3) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
+        // Pen blanco más grueso y suave para el trazo
+        private readonly Pen tracePen = new Pen(Color.White, 8)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round,
+            LineJoin = System.Drawing.Drawing2D.LineJoin.Round
+        };
 
         public CircleToSearch()
         {
@@ -135,18 +140,31 @@ namespace CircleToSearchCS
             }
             else
             {
-                points.Add(e.Location);
-                pictureBox.Invalidate();
+                // Solo agregar el punto si la distancia al anterior es suficiente (para suavizar)
+                if (points.Count == 0 || Distance(points[^1], e.Location) > 4)
+                {
+                    points.Add(e.Location);
+                    pictureBox.Invalidate();
+                }
             }
+        }
+
+        // Calcula la distancia euclidiana entre dos puntos
+        private static double Distance(Point a, Point b)
+        {
+            int dx = a.X - b.X;
+            int dy = a.Y - b.Y;
+            return Math.Sqrt(dx * dx + dy * dy);
         }
 
         // Dibuja el trazo blanco siguiendo los puntos del mouse
         private void PictureBox_Paint(object? sender, PaintEventArgs e)
         {
-            if (Config.MODE != "BOX" && points.Count > 1)
+            if (Config.MODE != "BOX" && points.Count > 2)
             {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                e.Graphics.DrawLines(tracePen, points.ToArray());
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                // Usar un spline para suavizar el trazo
+                e.Graphics.DrawCurve(tracePen, points.ToArray(), 0.5f);
             }
         }
 
