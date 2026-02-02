@@ -18,6 +18,11 @@ namespace CircleToSearchCS
         private Bitmap originalImage = null!;
         private Bitmap darkImage = null!;
         private PictureBox pictureBox = null!;
+        private System.Windows.Forms.Timer? brightnessTimer;
+        private float currentBrightness = 1f;
+        private float targetBrightness = 0.5f;
+        private float brightnessStep = 0.01f;
+        private bool animatingToDark = true;
         private List<Point> points = new List<Point>();
         private Rectangle selectionRect;
         private int currentModeIndex = 0;
@@ -46,16 +51,25 @@ namespace CircleToSearchCS
 
         private void InitOverlay()
         {
-            overlayForm = new Form();
+            overlayForm = new OverlayForm();
             overlayForm.FormBorderStyle = FormBorderStyle.None;
             overlayForm.WindowState = FormWindowState.Maximized;
             overlayForm.TopMost = true;
+            overlayForm.Opacity = 0.0; // Comienza invisible
             overlayForm.BackColor = Color.Black;
-            overlayForm.Opacity = 1.0;
             overlayForm.KeyPreview = true;
+            overlayForm.ShowInTaskbar = false; // Oculta de Alt-Tab
+            overlayForm.Activated += (s, e) => overlayForm.Opacity = 1.0; // Forzar opacidad al activarse
+            overlayForm.Load += (s, e) => {
+                overlayForm.Opacity = 1.0;
+                StartBrightnessAnimation(1f, 0.5f, false);
+            };
+            overlayForm.KeyDown += OverlayForm_KeyDown;
 
+            // Captura pantalla antes de mostrar
             originalImage = CaptureScreen();
-            darkImage = ChangeBrightness(originalImage, 0.4f);
+            currentBrightness = 1f;
+            darkImage = ChangeBrightness(originalImage, currentBrightness);
 
             pictureBox = new PictureBox();
             pictureBox.Dock = DockStyle.Fill;
@@ -79,19 +93,95 @@ namespace CircleToSearchCS
 
             overlayForm.KeyDown += OverlayForm_KeyDown;
             overlayForm.MouseWheel += OverlayForm_MouseWheel;
+
+            // Mostrar ventana y luego animar (más rápido y sin frame oscuro)
+            overlayForm.Load += (s, e) => {
+                overlayForm.Opacity = 1.0;
+                StartBrightnessAnimation(1f, 0.5f, false);
+            };
+
+        }
+
+        private void StartBrightnessAnimation(float from, float to, bool closeAfter = false)
+        {
+            if (brightnessTimer != null)
+            {
+                brightnessTimer.Stop();
+                brightnessTimer.Dispose();
+            }
+            currentBrightness = from;
+            targetBrightness = to;
+            animatingToDark = !closeAfter;
+            brightnessStep = (to > from ? 1 : -1) * 0.045f; // Aún más rápido
+            brightnessTimer = new System.Windows.Forms.Timer();
+            brightnessTimer.Interval = 4; // Aún más rápido
+            brightnessTimer.Tick += (s, e) =>
+            {
+                if ((brightnessStep < 0 && currentBrightness > targetBrightness) || (brightnessStep > 0 && currentBrightness < targetBrightness))
+                {
+                    currentBrightness += brightnessStep;
+                    if ((brightnessStep < 0 && currentBrightness < targetBrightness) || (brightnessStep > 0 && currentBrightness > targetBrightness))
+                        currentBrightness = targetBrightness;
+                    pictureBox.Image = ChangeBrightness(originalImage, currentBrightness);
+                }
+                else
+                {
+                    brightnessTimer!.Stop();
+                    pictureBox.Image = ChangeBrightness(originalImage, targetBrightness);
+                    if (closeAfter)
+                    {
+                        overlayForm.Close();
+                    }
+                }
+            };
+            brightnessTimer.Start();
+        
+            modeLabel = new Label();
+            modeLabel.Text = modes[currentModeIndex];
+            modeLabel.Font = new Font("Segoe UI", 24, FontStyle.Bold);
+            modeLabel.ForeColor = ColorTranslator.FromHtml(Config.TEXT_COLOR);
+            modeLabel.BackColor = Color.Transparent;
+            modeLabel.AutoSize = true;
+            modeLabel.Top = 50;
+            modeLabel.Left = (Screen.PrimaryScreen.Bounds.Width - modeLabel.Width) / 2;
+            overlayForm.Controls.Add(modeLabel);
+
+            overlayForm.KeyDown += OverlayForm_KeyDown;
+            overlayForm.MouseWheel += OverlayForm_MouseWheel;
         }
 
         public void Run()
         {
-            overlayForm.ShowDialog();
+            overlayForm.Show();
+            overlayForm.Focus();
+            overlayForm.Activate();
+            Application.Run(overlayForm);
         }
 
         private void OverlayForm_KeyDown(object? sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Escape)
             {
-                overlayForm.Close();
+                StartBrightnessAnimation(currentBrightness, 1f, true);
+                e.Handled = true;
             }
+        }
+
+        // Form especial para ocultar de Alt-Tab
+        private class OverlayForm : Form
+        {
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    var cp = base.CreateParams;
+                    cp.ExStyle |= 0x80; // WS_EX_TOOLWINDOW
+                    cp.ExStyle &= ~0x40000; // Quita WS_EX_APPWINDOW
+                    return cp;
+                }
+            }
+            // Evita que la ventana reciba foco y aparezca en Alt-Tab
+            protected override bool ShowWithoutActivation => true;
         }
 
         private void OverlayForm_MouseWheel(object? sender, MouseEventArgs e)
@@ -180,12 +270,21 @@ namespace CircleToSearchCS
                     {
                         g.DrawImage(originalImage, 0, 0, selectionRect, GraphicsUnit.Pixel);
                     }
-                    overlayForm.Close();
-                    AutomateGoogleSearch(cropped);
+                    // Clonar el bitmap para el hilo
+                    Bitmap threadBitmap = (Bitmap)cropped.Clone();
+                    // Animar brillo de regreso antes de cerrar
+                    StartBrightnessAnimation(currentBrightness, 1f, true);
+                    Thread t = new Thread(() =>
+                    {
+                        try { AutomateGoogleSearch(threadBitmap); }
+                        catch (Exception ex) { MessageBox.Show($"Error al enviar a Chrome: {ex.Message}"); }
+                    });
+                    t.SetApartmentState(ApartmentState.STA);
+                    t.Start();
                 }
                 else
                 {
-                    overlayForm.Close();
+                    StartBrightnessAnimation(currentBrightness, 1f, true);
                 }
             }
             else
@@ -202,12 +301,20 @@ namespace CircleToSearchCS
                     {
                         g.DrawImage(originalImage, 0, 0, rect, GraphicsUnit.Pixel);
                     }
-                    overlayForm.Close();
-                    AutomateGoogleSearch(cropped);
+                    // Clonar el bitmap para el hilo
+                    Bitmap threadBitmap = (Bitmap)cropped.Clone();
+                    StartBrightnessAnimation(currentBrightness, 1f, true);
+                    Thread t = new Thread(() =>
+                    {
+                        try { AutomateGoogleSearch(threadBitmap); }
+                        catch (Exception ex) { MessageBox.Show($"Error al enviar a Chrome: {ex.Message}"); }
+                    });
+                    t.SetApartmentState(ApartmentState.STA);
+                    t.Start();
                 }
                 else
                 {
-                    overlayForm.Close();
+                    StartBrightnessAnimation(currentBrightness, 1f, true);
                 }
             }
         }
@@ -245,15 +352,46 @@ namespace CircleToSearchCS
             return result;
         }
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr FindWindow(string lpClassName, string? lpWindowName);
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
         private void AutomateGoogleSearch(Bitmap image)
         {
             string targetUrl = urls[currentModeIndex];
             SendToClipboard(image);
-            Process.Start(new ProcessStartInfo(targetUrl) { UseShellExecute = true });
-            Thread.Sleep((int)(Config.BROWSER_LOAD_WAIT_TIME * 500));
-            // Pega la imagen dos veces con 0,5s de espera entre cada pegado
-            SendKeys.SendWait("^v");
-            Thread.Sleep(500);
+
+            // Intentar encontrar una ventana de Chrome
+            IntPtr chromeHandle = FindWindow("Chrome_WidgetWin_1", null);
+            if (chromeHandle == IntPtr.Zero)
+            {
+                // Chrome no está abierto, abrirlo
+                Process.Start(new ProcessStartInfo(targetUrl) { UseShellExecute = true });
+                Thread.Sleep((int)(Config.BROWSER_LOAD_WAIT_TIME * 1000));
+                // Intentar encontrar la ventana de Chrome de nuevo
+                int retries = 10;
+                while (chromeHandle == IntPtr.Zero && retries-- > 0)
+                {
+                    Thread.Sleep(300);
+                    chromeHandle = FindWindow("Chrome_WidgetWin_1", null);
+                }
+            }
+            else
+            {
+                // Chrome ya está abierto, solo navegar a la URL
+                Process.Start(new ProcessStartInfo(targetUrl) { UseShellExecute = true });
+                Thread.Sleep((int)(Config.BROWSER_LOAD_WAIT_TIME * 1000));
+            }
+
+            // Traer Chrome al frente
+            if (chromeHandle != IntPtr.Zero)
+            {
+                SetForegroundWindow(chromeHandle);
+                Thread.Sleep(300);
+            }
+
+            // Pegar desde el portapapeles
             SendKeys.SendWait("^v");
             Thread.Sleep(500);
             // Presiona Enter dos veces con 0,5s de espera entre cada uno
