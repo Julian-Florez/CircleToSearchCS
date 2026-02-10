@@ -24,42 +24,9 @@ namespace CircleToSearchCS
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            var trayThread = new Thread(() => TrayIcon.RunTrayIcon());
-            trayThread.IsBackground = true;
-            trayThread.Start();
-
-            Console.WriteLine("Circle to Search is running.");
-            Console.WriteLine("Check your system tray to exit.");
-
-            // Hotkey loop mejorado: permite múltiples ejecuciones seguidas
-            bool hotkeyPressed = false;
-            while (TrayIcon.AppRunning)
+            using (var app = new CircleToSearch())
             {
-                bool ctrl = (Control.ModifierKeys & Keys.Control) == Keys.Control;
-                bool alt = (Control.ModifierKeys & Keys.Alt) == Keys.Alt;
-                bool prtsc = Keyboard.IsKeyDown(Keys.PrintScreen);
-
-                if (ctrl && alt && prtsc)
-                {
-                    if (!hotkeyPressed)
-                    {
-                        hotkeyPressed = true;
-                        Thread thread = new Thread(() =>
-                        {
-                            using (var app = new CircleToSearch())
-                            {
-                                app.Run();
-                            }
-                        });
-                        thread.SetApartmentState(ApartmentState.STA);
-                        thread.Start();
-                    }
-                }
-                else
-                {
-                    hotkeyPressed = false;
-                }
-                Thread.Sleep(50);
+                app.Run();
             }
         }
     }

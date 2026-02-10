@@ -12,7 +12,7 @@ namespace CircleToSearchCS
 {
     static class Config
     {
-        public const string HOTKEY = "PrintScreen"; // Ctrl+Alt+PrintScreen is not directly supported, will use PrintScreen
+        public const string HOTKEY = "Win+C";
         public const string MODE = "CIRCLE"; // "BOX" or "CIRCLE"
         public static readonly Dictionary<string, string> SEARCH_MODES = new Dictionary<string, string>
         {

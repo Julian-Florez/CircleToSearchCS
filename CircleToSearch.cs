@@ -180,7 +180,7 @@ namespace CircleToSearchCS
                     return cp;
                 }
             }
-            // Evita que la ventana reciba foco y aparezca en Alt-Tab
+            // Evita que la ventana reciba foco y aparezca en-Tab
             protected override bool ShowWithoutActivation => true;
         }
 
