@@ -34,6 +34,14 @@ namespace CircleToSearchCS
         private string[] modes;
         private string[] urls;
 
+        // Animación slide de la barra de búsqueda
+        private System.Windows.Forms.Timer? searchBarSlideTimer;
+        private int searchBarTargetTop;
+        private int searchBarStartTop;
+        private int searchBarSlideElapsed;
+        private int searchBarSlideDuration; // en ms, se calcula para igualar la animación de brillo
+        private bool searchBarSlideCloseAfter;
+
         // Pen blanco más grueso y suave para el trazo
         private readonly Pen tracePen = new Pen(Color.White, 8)
         {
@@ -64,6 +72,7 @@ namespace CircleToSearchCS
             overlayForm.Load += (s, e) => {
                 overlayForm.Opacity = 1.0;
                 StartBrightnessAnimation(1f, 0.5f, false);
+                StartSearchBarSlideAnimation(false);
             };
             overlayForm.KeyDown += OverlayForm_KeyDown;
 
@@ -98,7 +107,8 @@ namespace CircleToSearchCS
             searchBox.Width = 600; // Más grande
             searchBox.Height = 110; // Más alto para acomodar descendentes
             searchBox.Left = (Screen.PrimaryScreen.Bounds.Width - searchBox.Width) / 2;
-            searchBox.Top = Screen.PrimaryScreen.Bounds.Height - 200; // 200px desde abajo
+            searchBarTargetTop = Screen.PrimaryScreen.Bounds.Height - 200; // Posición final
+            searchBox.Top = Screen.PrimaryScreen.Bounds.Height; // Empieza fuera de pantalla (abajo)
             searchBox.BackColor = ColorTranslator.FromHtml("#191919");
             searchBox.ForeColor = ColorTranslator.FromHtml("#C3C6D6");
             searchBox.BorderColor = Color.Black; // Bordes negros
@@ -111,12 +121,6 @@ namespace CircleToSearchCS
 
             overlayForm.KeyDown += OverlayForm_KeyDown;
             overlayForm.MouseWheel += OverlayForm_MouseWheel;
-
-            // Mostrar ventana y luego animar (más rápido y sin frame oscuro)
-            overlayForm.Load += (s, e) => {
-                overlayForm.Opacity = 1.0;
-                StartBrightnessAnimation(1f, 0.5f, false);
-            };
 
         }
 
@@ -133,6 +137,13 @@ namespace CircleToSearchCS
             brightnessStep = (to > from ? 1 : -1) * 0.045f; // Aún más rápido
             brightnessTimer = new System.Windows.Forms.Timer();
             brightnessTimer.Interval = 4; // Aún más rápido
+
+            // Si es cierre, iniciar también la animación de slide hacia abajo
+            if (closeAfter)
+            {
+                StartSearchBarSlideAnimation(true);
+            }
+
             brightnessTimer.Tick += (s, e) =>
             {
                 if ((brightnessStep < 0 && currentBrightness > targetBrightness) || (brightnessStep > 0 && currentBrightness < targetBrightness))
@@ -153,19 +164,63 @@ namespace CircleToSearchCS
                 }
             };
             brightnessTimer.Start();
-        
-            modeLabel = new Label();
-            modeLabel.Text = modes[currentModeIndex];
-            modeLabel.Font = new Font("Segoe UI", 24, FontStyle.Bold);
-            modeLabel.ForeColor = ColorTranslator.FromHtml(Config.TEXT_COLOR);
-            modeLabel.BackColor = Color.Transparent;
-            modeLabel.AutoSize = true;
-            modeLabel.Top = 50;
-            modeLabel.Left = (Screen.PrimaryScreen.Bounds.Width - modeLabel.Width) / 2;
-            overlayForm.Controls.Add(modeLabel);
+        }
 
-            overlayForm.KeyDown += OverlayForm_KeyDown;
-            overlayForm.MouseWheel += OverlayForm_MouseWheel;
+        private void StartSearchBarSlideAnimation(bool closing)
+        {
+            if (searchBarSlideTimer != null)
+            {
+                searchBarSlideTimer.Stop();
+                searchBarSlideTimer.Dispose();
+            }
+
+            int screenBottom = Screen.PrimaryScreen.Bounds.Height;
+
+            // Calcular la duración de la animación de brillo para igualarla
+            // Brillo: rango 0.5 / step 0.045 ≈ 11.11 ticks * 4ms ≈ 44ms
+            float brightnessRange = Math.Abs(targetBrightness - currentBrightness);
+            if (brightnessRange < 0.01f) brightnessRange = 0.5f; // valor por defecto
+            int totalTicks = (int)Math.Ceiling(brightnessRange / 0.045f);
+            searchBarSlideDuration = totalTicks * 4; // misma duración que la animación de brillo
+            if (searchBarSlideDuration < 20) searchBarSlideDuration = 44; // mínimo razonable
+
+            if (closing)
+            {
+                searchBarStartTop = searchBox.Top;
+                searchBarTargetTop = screenBottom; // fuera de pantalla abajo
+            }
+            else
+            {
+                searchBarStartTop = screenBottom; // empieza fuera de pantalla
+                searchBarTargetTop = screenBottom - 200; // posición final normal
+                searchBox.Top = searchBarStartTop;
+            }
+
+            searchBarSlideElapsed = 0;
+            searchBarSlideCloseAfter = closing;
+
+            searchBarSlideTimer = new System.Windows.Forms.Timer();
+            searchBarSlideTimer.Interval = 4; // mismo intervalo que el brillo
+            searchBarSlideTimer.Tick += (s, e) =>
+            {
+                searchBarSlideElapsed += searchBarSlideTimer!.Interval;
+                float t = Math.Min(1f, (float)searchBarSlideElapsed / searchBarSlideDuration);
+                float easedT = EaseOutCubic(t);
+
+                searchBox.Top = searchBarStartTop + (int)((searchBarTargetTop - searchBarStartTop) * easedT);
+
+                if (t >= 1f)
+                {
+                    searchBarSlideTimer.Stop();
+                    searchBox.Top = searchBarTargetTop;
+                }
+            };
+            searchBarSlideTimer.Start();
+        }
+
+        private static float EaseOutCubic(float t)
+        {
+            return 1f - (float)Math.Pow(1f - t, 3);
         }
 
         public void Run()
