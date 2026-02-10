@@ -12,4 +12,13 @@
       <ApplicationManifest>app.manifest</ApplicationManifest>
     </PropertyGroup>
 
+    <ItemGroup>
+      <None Update="assets\icons\google.png">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+      <None Update="assets\icons\search.png">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
 </Project>

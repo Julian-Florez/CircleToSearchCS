@@ -28,6 +28,7 @@ namespace CircleToSearchCS
         private int currentModeIndex = 0;
         private System.Windows.Forms.Timer? hideLabelTimer;
         private Label modeLabel = null!;
+        private RoundedTextBox searchBox = null!;
         private bool isDrawing = false;
         private Point startPoint;
         private string[] modes;
@@ -90,6 +91,23 @@ namespace CircleToSearchCS
             modeLabel.Top = 50;
             modeLabel.Left = (Screen.PrimaryScreen.Bounds.Width - modeLabel.Width) / 2;
             overlayForm.Controls.Add(modeLabel);
+
+            // Crear la barra de búsqueda
+            searchBox = new RoundedTextBox();
+            searchBox.Font = new Font("Google Sans Flex", 14, FontStyle.Regular); // Fuente un poco más pequeña
+            searchBox.Width = 600; // Más grande
+            searchBox.Height = 110; // Más alto para acomodar descendentes
+            searchBox.Left = (Screen.PrimaryScreen.Bounds.Width - searchBox.Width) / 2;
+            searchBox.Top = Screen.PrimaryScreen.Bounds.Height - 200; // 200px desde abajo
+            searchBox.BackColor = ColorTranslator.FromHtml("#191919");
+            searchBox.ForeColor = ColorTranslator.FromHtml("#C3C6D6");
+            searchBox.BorderColor = Color.Black; // Bordes negros
+            searchBox.BorderRadius = 40; // Radio proporcionalmente más grande para la nueva altura
+            searchBox.BorderWidth = 30; // Bordes más gruesos
+            searchBox.KeyDown += SearchBox_KeyDown;
+            overlayForm.Controls.Add(searchBox);
+            searchBox.BringToFront();
+            searchBox.Focus();
 
             overlayForm.KeyDown += OverlayForm_KeyDown;
             overlayForm.MouseWheel += OverlayForm_MouseWheel;
@@ -164,6 +182,40 @@ namespace CircleToSearchCS
             {
                 StartBrightnessAnimation(currentBrightness, 1f, true);
                 e.Handled = true;
+            }
+        }
+
+        private void SearchBox_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                string searchText = searchBox.Text.Trim();
+                if (!string.IsNullOrEmpty(searchText))
+                {
+                    PerformTextSearch(searchText);
+                    e.Handled = true;
+                    e.SuppressKeyPress = true; // Evita el sonido de beep
+                }
+            }
+        }
+
+        private void PerformTextSearch(string searchText)
+        {
+            try
+            {
+                // URL de búsqueda de Google con el texto
+                string searchUrl = $"https://www.google.com/search?q={Uri.EscapeDataString(searchText)}";
+                
+                // Abrir Chrome con la búsqueda
+                Process.Start(new ProcessStartInfo(searchUrl) { UseShellExecute = true });
+                
+                // Cerrar el overlay después de la búsqueda
+                StartBrightnessAnimation(currentBrightness, 1f, true);
+            }
+            catch (Exception ex)
+            {
+                // En caso de error, intentar con el navegador predeterminado
+                MessageBox.Show($"Error al abrir la búsqueda: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -263,29 +315,6 @@ namespace CircleToSearchCS
             isDrawing = false;
             if (Config.MODE == "BOX")
             {
-                if (selectionRect.Width > 0 && selectionRect.Height > 0)
-                {
-                    var cropped = new Bitmap(selectionRect.Width, selectionRect.Height);
-                    using (Graphics g = Graphics.FromImage(cropped))
-                    {
-                        g.DrawImage(originalImage, 0, 0, selectionRect, GraphicsUnit.Pixel);
-                    }
-                    // Clonar el bitmap para el hilo
-                    Bitmap threadBitmap = (Bitmap)cropped.Clone();
-                    // Animar brillo de regreso antes de cerrar
-                    StartBrightnessAnimation(currentBrightness, 1f, true);
-                    Thread t = new Thread(() =>
-                    {
-                        try { AutomateGoogleSearch(threadBitmap); }
-                        catch (Exception ex) { MessageBox.Show($"Error al enviar a Chrome: {ex.Message}"); }
-                    });
-                    t.SetApartmentState(ApartmentState.STA);
-                    t.Start();
-                }
-                else
-                {
-                    StartBrightnessAnimation(currentBrightness, 1f, true);
-                }
             }
             else
             {
@@ -411,6 +440,268 @@ namespace CircleToSearchCS
             originalImage?.Dispose();
             darkImage?.Dispose();
             pictureBox?.Dispose();
+            searchBox?.Dispose();
+        }
+    }
+
+    public class RoundedTextBox : UserControl
+    {
+        private TextBox textBox;
+        private PictureBox leftIcon;
+        private PictureBox rightIcon;
+        private int borderRadius = 20;
+        private int borderWidth = 2;
+        private Color borderColor = Color.White;
+
+        [System.ComponentModel.Browsable(true)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Visible)]
+        public int BorderRadius
+        {
+            get => borderRadius;
+            set { borderRadius = value; Invalidate(); }
+        }
+
+        [System.ComponentModel.Browsable(true)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Visible)]
+        public int BorderWidth
+        {
+            get => borderWidth;
+            set { borderWidth = value; Invalidate(); }
+        }
+
+        [System.ComponentModel.Browsable(true)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Visible)]
+        public Color BorderColor
+        {
+            get => borderColor;
+            set { borderColor = value; Invalidate(); }
+        }
+
+        public override string Text 
+        { 
+            get => textBox?.Text ?? string.Empty; 
+            set { if (textBox != null) textBox.Text = value; } 
+        }
+
+        public override Font Font 
+        { 
+            get => textBox?.Font ?? base.Font; 
+            set { if (textBox != null) textBox.Font = value; } 
+        }
+
+        public override Color ForeColor 
+        { 
+            get => textBox?.ForeColor ?? base.ForeColor; 
+            set {
+                if (textBox != null)
+                    textBox.ForeColor = value;
+                base.ForeColor = value;
+            }
+        }
+
+        public override Color BackColor
+        {
+            get => base.BackColor;
+            set {
+                base.BackColor = value;
+                if (textBox != null)
+                    textBox.BackColor = value;
+                Invalidate();
+            }
+        }
+
+        public new event KeyEventHandler KeyDown
+        {
+            add => textBox.KeyDown += value;
+            remove => textBox.KeyDown -= value;
+        }
+
+        public RoundedTextBox()
+        {
+            // Configuración avanzada para soportar transparencia y antialiasing
+            this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | 
+                         ControlStyles.DoubleBuffer | ControlStyles.ResizeRedraw | 
+                         ControlStyles.SupportsTransparentBackColor | ControlStyles.Opaque, true);
+            this.SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
+            this.UpdateStyles();
+
+            // Crear textBox PRIMERO para evitar NullReferenceException en propiedades override
+            textBox = new TextBox();
+            textBox.BorderStyle = BorderStyle.None;
+            textBox.Multiline = true; // Permite ajustar la altura manualmente
+            textBox.WordWrap = false; // Evitar saltos de línea visuales
+            textBox.BackColor = ColorTranslator.FromHtml("#1F1F1F");
+            textBox.ForeColor = Color.White;
+            textBox.TextAlign = HorizontalAlignment.Left;
+            textBox.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            // Altura suficiente para la fuente con descendentes
+            textBox.Height = textBox.PreferredHeight + 8;
+            int iconSpace = 40; // Espacio reservado para cada icono
+            int verticalOffset = (Height - textBox.Height) / 2;
+            textBox.Location = new Point(borderRadius / 2 + iconSpace + 10, Math.Max(2, verticalOffset));
+            textBox.Width = Width - borderRadius - iconSpace * 2 - 40;
+            
+            // Suprimir el salto de línea cuando se presiona Enter
+            textBox.KeyDown += (s, e) => {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    e.SuppressKeyPress = true; // Evita el salto de línea en Multiline
+                }
+            };
+            
+            this.Controls.Add(textBox);
+
+            // Icono izquierdo (google.png)
+            string basePath = AppDomain.CurrentDomain.BaseDirectory;
+            leftIcon = new PictureBox();
+            string googlePath = Path.Combine(basePath, "assets", "icons", "google.png");
+            try
+            {
+                if (File.Exists(googlePath))
+                    leftIcon.Image = Image.FromFile(googlePath);
+            }
+            catch
+            {
+                // Silenciar error si el archivo no se puede cargar (ej: WebP como PNG)
+            }
+            leftIcon.SizeMode = PictureBoxSizeMode.Zoom;
+            leftIcon.BackColor = Color.Transparent;
+            leftIcon.Size = new Size(28, 28);
+            this.Controls.Add(leftIcon);
+
+            // Icono derecho (search.png)
+            rightIcon = new PictureBox();
+            string searchPath = Path.Combine(basePath, "assets", "icons", "search.png");
+            try
+            {
+                if (File.Exists(searchPath))
+                    rightIcon.Image = Image.FromFile(searchPath);
+            }
+            catch
+            {
+                // Silenciar error si el archivo no se puede cargar
+            }
+            rightIcon.SizeMode = PictureBoxSizeMode.Zoom;
+            rightIcon.BackColor = Color.Transparent;
+            rightIcon.Size = new Size(28, 28);
+            rightIcon.Cursor = Cursors.Hand; // Cursor de mano para indicar que es clickeable
+            rightIcon.Click += (s, e) => {
+                // Disparar el evento KeyDown del textBox con Enter
+                var args = new KeyEventArgs(Keys.Enter);
+                textBox.GetType().GetMethod("OnKeyDown", 
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    ?.Invoke(textBox, new object[] { args });
+            };
+            this.Controls.Add(rightIcon);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            
+            Graphics g = e.Graphics;
+            // Configuración avanzada de antialiasing para bordes suaves
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+            g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+
+            // Crear el rectángulo para el borde
+            Rectangle rect = new Rectangle(borderWidth / 2, borderWidth / 2, 
+                                         Width - borderWidth, Height - borderWidth);
+            
+            // Crear el path redondeado
+            using (System.Drawing.Drawing2D.GraphicsPath path = CreateRoundedRectangle(rect, borderRadius))
+            {
+                // Rellenar el fondo
+                using (SolidBrush brush = new SolidBrush(this.BackColor))
+                {
+                    g.FillPath(brush, path);
+                }
+
+                // Dibujar el borde con antialiasing mejorado
+                using (Pen pen = new Pen(borderColor, borderWidth))
+                {
+                    pen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
+                    pen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+                    pen.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
+                    g.DrawPath(pen, path);
+                }
+
+                // Establecer la región del control
+                this.Region = new Region(path);
+            }
+        }
+
+        private System.Drawing.Drawing2D.GraphicsPath CreateRoundedRectangle(Rectangle rect, int radius)
+        {
+            System.Drawing.Drawing2D.GraphicsPath path = new System.Drawing.Drawing2D.GraphicsPath();
+            
+            if (radius <= 0)
+            {
+                path.AddRectangle(rect);
+                return path;
+            }
+
+            int diameter = radius * 2;
+            Rectangle arc = new Rectangle(rect.Location, new Size(diameter, diameter));
+
+            // Esquina superior izquierda
+            path.AddArc(arc, 180, 90);
+
+            // Esquina superior derecha
+            arc.X = rect.Right - diameter;
+            path.AddArc(arc, 270, 90);
+
+            // Esquina inferior derecha
+            arc.Y = rect.Bottom - diameter;
+            path.AddArc(arc, 0, 90);
+
+            // Esquina inferior izquierda
+            arc.X = rect.Left;
+            path.AddArc(arc, 90, 90);
+
+            path.CloseFigure();
+            return path;
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            int iconSize = 28;
+            int iconPadding = 30; // Padding desde los bordes
+
+            if (leftIcon != null)
+            {
+                leftIcon.Location = new Point(
+                    borderRadius / 2 + iconPadding,
+                    (Height - iconSize) / 2
+                );
+            }
+
+            if (rightIcon != null)
+            {
+                rightIcon.Location = new Point(
+                    Width - borderRadius / 2 - iconPadding - iconSize,
+                    (Height - iconSize) / 2
+                );
+            }
+
+            if (textBox != null)
+            {
+                int leftEdge = borderRadius / 2 + iconPadding + iconSize + 10;
+                int rightEdge = borderRadius / 2 + iconPadding + iconSize + 10;
+                textBox.Height = textBox.PreferredHeight + 8;
+                int verticalOffset = (Height - textBox.Height) / 2;
+                textBox.Location = new Point(leftEdge, Math.Max(2, verticalOffset));
+                textBox.Width = Width - leftEdge - rightEdge;
+            }
+            Invalidate();
+        }
+
+        public new void Focus()
+        {
+            textBox.Focus();
         }
     }
 }
