@@ -46,6 +46,8 @@ namespace CircleToSearchCS
         private const int handleThickness = 8;
         private const int handleLength = 32;
         private const int glowSize = 100;
+        private const int screenGlowSize = 500;
+        private const int screenGlowBaseAlpha = 90;
         private const int minSelection = 100;
         private FlowLayoutPanel? actionMenu;
         private bool actionMenuPending;
@@ -436,6 +438,8 @@ namespace CircleToSearchCS
                 e.Graphics.DrawCurve(tracePen, points.ToArray(), 0.5f);
             }
 
+            DrawScreenGlow(e.Graphics);
+
             if (selectionActive || animatingSelection)
             {
                 DrawSelectionOverlay(e.Graphics, animatingSelection ? animatedRect : selectionRect);
@@ -637,6 +641,60 @@ namespace CircleToSearchCS
 
                 g.Restore(state);
             }
+        }
+
+        private void DrawScreenGlow(Graphics g)
+        {
+            int spread = screenGlowSize;
+            int overlap = spread / 2;
+            int alpha = GetScreenGlowAlpha();
+            if (alpha <= 0) return;
+
+            Rectangle screenRect = new Rectangle(0, 0, pictureBox.Width, pictureBox.Height);
+
+            DrawCornerGlowScreen(g, screenRect, new Rectangle(-spread, -spread, spread + overlap, spread + overlap),
+                new Point(0, 0), Color.FromArgb(alpha, 235, 73, 59)); // TL rojo
+
+            DrawCornerGlowScreen(g, screenRect, new Rectangle(screenRect.Width - overlap, -spread, spread + overlap, spread + overlap),
+                new Point(screenRect.Width, 0), Color.FromArgb(alpha, 251, 190, 13)); // TR amarillo
+
+            DrawCornerGlowScreen(g, screenRect, new Rectangle(screenRect.Width - overlap, screenRect.Height - overlap, spread + overlap, spread + overlap),
+                new Point(screenRect.Width, screenRect.Height), Color.FromArgb(alpha, 58, 171, 88)); // BR verde
+
+            DrawCornerGlowScreen(g, screenRect, new Rectangle(-spread, screenRect.Height - overlap, spread + overlap, spread + overlap),
+                new Point(0, screenRect.Height), Color.FromArgb(alpha, 72, 137, 244)); // BL azul
+        }
+
+        private void DrawCornerGlowScreen(Graphics g, Rectangle innerRect, Rectangle area, Point center, Color centerColor)
+        {
+            using (var region = new Region(area))
+            {
+                var state = g.Save();
+                g.SetClip(region, System.Drawing.Drawing2D.CombineMode.Replace);
+
+                using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+                {
+                    path.AddRectangle(area);
+                    using (var brush = new System.Drawing.Drawing2D.PathGradientBrush(path))
+                    {
+                        brush.CenterPoint = center;
+                        brush.CenterColor = centerColor;
+                        brush.SurroundColors = new[] { Color.FromArgb(0, centerColor.R, centerColor.G, centerColor.B) };
+                        brush.FocusScales = new PointF(0.05f, 0.05f);
+                        g.FillPath(brush, path);
+                    }
+                }
+
+                g.Restore(state);
+            }
+        }
+
+        private int GetScreenGlowAlpha()
+        {
+            int a = (int)(screenGlowBaseAlpha * (1f - currentBrightness));
+            if (a < 0) a = 0;
+            if (a > 255) a = 255;
+            return a;
         }
 
         private void DrawHandles(Graphics g, Rectangle rect, int radius)
