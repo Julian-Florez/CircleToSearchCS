@@ -34,6 +34,28 @@ namespace CircleToSearchCS
         private string[] modes;
         private string[] urls;
 
+        // Selección rectangular animada con handles y menú de acciones
+
+        private Rectangle animatedRect;
+        private bool selectionActive;
+        private bool animatingSelection;
+        private System.Windows.Forms.Timer? selectionAnimTimer;
+        private DateTime selectionAnimStart;
+        private int selectionAnimDuration = 180;
+        private const int handleSize = 28;
+        private const int handleThickness = 8;
+        private const int handleLength = 32;
+        private const int glowSize = 100;
+        private const int minSelection = 100;
+        private FlowLayoutPanel? actionMenu;
+        private bool actionMenuPending;
+
+        private bool isResizingSelection;
+        private bool isMovingSelection;
+        private Point dragStart;
+        private Rectangle selectionAtDragStart;
+        private ResizeHandle activeHandle = ResizeHandle.None;
+
         // Animación slide de la barra de búsqueda
         private System.Windows.Forms.Timer? searchBarSlideTimer;
         private int searchBarTargetTop;
@@ -49,6 +71,15 @@ namespace CircleToSearchCS
             EndCap = System.Drawing.Drawing2D.LineCap.Round,
             LineJoin = System.Drawing.Drawing2D.LineJoin.Round
         };
+
+        private enum ResizeHandle
+        {
+            None,
+            TopLeft,
+            TopRight,
+            BottomLeft,
+            BottomRight
+        }
 
         public CircleToSearch()
         {
@@ -121,6 +152,8 @@ namespace CircleToSearchCS
 
             overlayForm.KeyDown += OverlayForm_KeyDown;
             overlayForm.MouseWheel += OverlayForm_MouseWheel;
+
+            CreateActionMenu();
 
         }
 
@@ -316,6 +349,34 @@ namespace CircleToSearchCS
 
         private void PictureBox_MouseDown(object? sender, MouseEventArgs e)
         {
+            if (selectionActive)
+            {
+                var handle = HitTestHandle(e.Location, selectionRect);
+                if (handle != ResizeHandle.None)
+                {
+                    isResizingSelection = true;
+                    activeHandle = handle;
+                    dragStart = e.Location;
+                    selectionAtDragStart = selectionRect;
+                    HideActionMenu();
+                    actionMenuPending = true;
+                    return;
+                }
+
+                if (selectionRect.Contains(e.Location))
+                {
+                    isMovingSelection = true;
+                    dragStart = e.Location;
+                    selectionAtDragStart = selectionRect;
+                    HideActionMenu();
+                    actionMenuPending = true;
+                    return;
+                }
+
+                // Si se hace clic fuera, empezar nueva selección
+                HideSelectionUI();
+            }
+
             isDrawing = true;
             startPoint = e.Location;
             points.Clear();
@@ -324,6 +385,18 @@ namespace CircleToSearchCS
 
         private void PictureBox_MouseMove(object? sender, MouseEventArgs e)
         {
+            if (isResizingSelection)
+            {
+                HandleResize(e.Location);
+                return;
+            }
+
+            if (isMovingSelection)
+            {
+                HandleMove(e.Location);
+                return;
+            }
+
             if (!isDrawing) return;
             if (Config.MODE == "BOX")
             {
@@ -337,7 +410,6 @@ namespace CircleToSearchCS
             }
             else
             {
-                // Solo agregar el punto si la distancia al anterior es suficiente (para suavizar)
                 if (points.Count == 0 || Distance(points[^1], e.Location) > 4)
                 {
                     points.Add(e.Location);
@@ -363,13 +435,35 @@ namespace CircleToSearchCS
                 // Usar un spline para suavizar el trazo
                 e.Graphics.DrawCurve(tracePen, points.ToArray(), 0.5f);
             }
+
+            if (selectionActive || animatingSelection)
+            {
+                DrawSelectionOverlay(e.Graphics, animatingSelection ? animatedRect : selectionRect);
+            }
         }
 
         private void PictureBox_MouseUp(object? sender, MouseEventArgs e)
         {
+            if (isResizingSelection || isMovingSelection)
+            {
+                isResizingSelection = false;
+                isMovingSelection = false;
+                activeHandle = ResizeHandle.None;
+                if (actionMenuPending)
+                {
+                    PositionActionMenu();
+                    actionMenuPending = false;
+                }
+                return;
+            }
+
             isDrawing = false;
             if (Config.MODE == "BOX")
             {
+                if (selectionRect.Width >= minSelection && selectionRect.Height >= minSelection)
+                {
+                    FinalizeSelection(selectionRect);
+                }
             }
             else
             {
@@ -380,27 +474,486 @@ namespace CircleToSearchCS
                     int maxX = points.Max(p => p.X);
                     int maxY = points.Max(p => p.Y);
                     var rect = new Rectangle(minX, minY, maxX - minX, maxY - minY);
-                    var cropped = new Bitmap(rect.Width, rect.Height);
-                    using (Graphics g = Graphics.FromImage(cropped))
+                    if (rect.Width >= minSelection && rect.Height >= minSelection)
                     {
-                        g.DrawImage(originalImage, 0, 0, rect, GraphicsUnit.Pixel);
+                        FinalizeSelection(rect);
                     }
-                    // Clonar el bitmap para el hilo
-                    Bitmap threadBitmap = (Bitmap)cropped.Clone();
-                    StartBrightnessAnimation(currentBrightness, 1f, true);
-                    Thread t = new Thread(() =>
-                    {
-                        try { AutomateGoogleSearch(threadBitmap); }
-                        catch (Exception ex) { MessageBox.Show($"Error al enviar a Chrome: {ex.Message}"); }
-                    });
-                    t.SetApartmentState(ApartmentState.STA);
-                    t.Start();
-                }
-                else
-                {
-                    StartBrightnessAnimation(currentBrightness, 1f, true);
                 }
             }
+        }
+
+        private void FinalizeSelection(Rectangle rect)
+        {
+            points.Clear();
+            HideSelectionUI();
+
+            // Normalizar para evitar valores negativos
+            selectionRect = new Rectangle(
+                Math.Max(0, rect.X),
+                Math.Max(0, rect.Y),
+                Math.Max(minSelection, rect.Width),
+                Math.Max(minSelection, rect.Height)
+            );
+
+            StartSelectionAnimation(selectionRect);
+        }
+
+        private void StartSelectionAnimation(Rectangle target)
+        {
+            if (selectionAnimTimer != null)
+            {
+                selectionAnimTimer.Stop();
+                selectionAnimTimer.Dispose();
+            }
+
+            selectionAnimStart = DateTime.Now;
+            animatingSelection = true;
+            selectionActive = false;
+
+            int startWidth = Math.Max(6, target.Width / 4);
+            int startHeight = Math.Max(6, target.Height / 4);
+            int startX = target.Left + (target.Width - startWidth) / 2;
+            int startY = target.Top + (target.Height - startHeight) / 2;
+            Rectangle startRect = new Rectangle(startX, startY, startWidth, startHeight);
+            animatedRect = startRect;
+
+            selectionAnimTimer = new System.Windows.Forms.Timer();
+            selectionAnimTimer.Interval = 12;
+            selectionAnimTimer.Tick += (s, e) =>
+            {
+                double elapsed = (DateTime.Now - selectionAnimStart).TotalMilliseconds;
+                double t = Math.Min(1.0, elapsed / selectionAnimDuration);
+                double eased = EaseOutCubic((float)t);
+                animatedRect = LerpRect(startRect, target, eased);
+                pictureBox.Invalidate();
+
+                if (t >= 1.0)
+                {
+                    selectionAnimTimer!.Stop();
+                    animatingSelection = false;
+                    selectionActive = true;
+                    selectionRect = target;
+                    PositionActionMenu();
+                    pictureBox.Invalidate();
+                }
+            };
+            selectionAnimTimer.Start();
+        }
+
+        private Rectangle LerpRect(Rectangle from, Rectangle to, double t)
+        {
+            int x = (int)(from.X + (to.X - from.X) * t);
+            int y = (int)(from.Y + (to.Y - from.Y) * t);
+            int w = (int)(from.Width + (to.Width - from.Width) * t);
+            int h = (int)(from.Height + (to.Height - from.Height) * t);
+            return new Rectangle(x, y, w, h);
+        }
+
+        private void DrawSelectionOverlay(Graphics g, Rectangle rect)
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            int radius = 20;
+
+            DrawGlow(g, rect, radius);
+
+            using (var path = CreateRoundedPath(rect, radius))
+            {
+                using (var fill = new SolidBrush(Color.FromArgb(0, 0, 0, 0)))
+                {
+                    g.FillPath(fill, path);
+                }
+            }
+
+            DrawHandles(g, rect, radius);
+        }
+
+        private System.Drawing.Drawing2D.GraphicsPath CreateRoundedPath(Rectangle rect, int radius)
+        {
+            var path = new System.Drawing.Drawing2D.GraphicsPath();
+            int diameter = radius * 2;
+            Rectangle arc = new Rectangle(rect.Location, new Size(diameter, diameter));
+
+            // Top-left
+            path.AddArc(arc, 180, 90);
+
+            // Top-right
+            arc.X = rect.Right - diameter;
+            path.AddArc(arc, 270, 90);
+
+            // Bottom-right
+            arc.Y = rect.Bottom - diameter;
+            path.AddArc(arc, 0, 90);
+
+            // Bottom-left
+            arc.X = rect.Left;
+            path.AddArc(arc, 90, 90);
+
+            path.CloseFigure();
+            return path;
+        }
+
+        private void DrawGlow(Graphics g, Rectangle rect, int radius)
+        {
+            int spread = glowSize*2;
+            int overlap = spread; // para que se mezclen los colores
+
+            // Esquinas con PathGradientBrush (color en el vértice, transparente hacia afuera) solo fuera del rectángulo
+            DrawCornerGlow(g, rect, new Rectangle(rect.Left - spread, rect.Top - spread, spread + overlap, spread + overlap),
+                new Point(rect.Left, rect.Top), Color.FromArgb(50, 235, 73, 59)); // TL (rojo)
+
+            DrawCornerGlow(g, rect, new Rectangle(rect.Right - overlap, rect.Top - spread, spread + overlap, spread + overlap),
+                new Point(rect.Right, rect.Top), Color.FromArgb(50, 251, 190, 13)); // TR (amarillo)
+
+            DrawCornerGlow(g, rect, new Rectangle(rect.Right - overlap, rect.Bottom - overlap, spread + overlap, spread + overlap),
+                new Point(rect.Right, rect.Bottom), Color.FromArgb(50, 58, 171, 88)); // BR (verde)
+
+            DrawCornerGlow(g, rect, new Rectangle(rect.Left - spread, rect.Bottom - overlap, spread + overlap, spread + overlap),
+                new Point(rect.Left, rect.Bottom), Color.FromArgb(50, 72, 137, 244)); // BL (azul)
+        }
+
+        private void DrawCornerGlow(Graphics g, Rectangle innerRect, Rectangle area, Point center, Color centerColor)
+        {
+            // Amplía la exclusión para evitar sangrado hacia adentro
+            Rectangle exclude = Rectangle.Inflate(innerRect, 15, 15);
+
+            using (var region = new Region(area))
+            {
+                region.Exclude(exclude); // no pintar dentro ni justo en el borde
+                var state = g.Save();
+                g.SetClip(region, System.Drawing.Drawing2D.CombineMode.Replace);
+
+                using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+                {
+                    path.AddRectangle(area);
+                    using (var brush = new System.Drawing.Drawing2D.PathGradientBrush(path))
+                    {
+                        brush.CenterPoint = center;
+                        brush.CenterColor = centerColor;
+                        brush.SurroundColors = new[] { Color.FromArgb(0, centerColor.R, centerColor.G, centerColor.B) };
+                        brush.FocusScales = new PointF(0.05f, 0.05f); // concentra color en el vértice
+                        g.FillPath(brush, path);
+                    }
+                }
+
+                g.Restore(state);
+            }
+        }
+
+        private void DrawHandles(Graphics g, Rectangle rect, int radius)
+        {
+            Color handleColor = Color.White;
+            DrawCornerArc(g, rect, radius, handleColor, Corner.TopLeft);
+            DrawCornerArc(g, rect, radius, handleColor, Corner.TopRight);
+            DrawCornerArc(g, rect, radius, handleColor, Corner.BottomLeft);
+            DrawCornerArc(g, rect, radius, handleColor, Corner.BottomRight);
+        }
+
+        private enum Corner
+        {
+            TopLeft,
+            TopRight,
+            BottomLeft,
+            BottomRight
+        }
+
+        private void DrawCornerArc(Graphics g, Rectangle rect, int radius, Color color, Corner corner)
+        {
+            float arcRadius = radius; // comparte el radio del rectángulo
+            float size = arcRadius * 2;
+            float extraSweep = 110f; // más largo para tocar y cubrir
+            float delta = (extraSweep - 90f) / 2f;
+            RectangleF arcRect;
+            float startAngle;
+
+            switch (corner)
+            {
+                case Corner.TopLeft:
+                    arcRect = new RectangleF(rect.Left - arcRadius, rect.Top - arcRadius, size, size);
+                    startAngle = 180f - delta;
+                    break;
+                case Corner.TopRight:
+                    arcRect = new RectangleF(rect.Right - arcRadius, rect.Top - arcRadius, size, size);
+                    startAngle = 270f - delta;
+                    break;
+                case Corner.BottomLeft:
+                    arcRect = new RectangleF(rect.Left - arcRadius, rect.Bottom - arcRadius, size, size);
+                    startAngle = 90f - delta;
+                    break;
+                default: // BottomRight
+                    arcRect = new RectangleF(rect.Right - arcRadius, rect.Bottom - arcRadius, size, size);
+                    startAngle = -delta;
+                    break;
+            }
+
+            using (var pen = new Pen(color, handleThickness))
+            {
+                pen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
+                pen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+                pen.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
+                g.DrawArc(pen, arcRect, startAngle, extraSweep);
+            }
+        }
+
+        private void HandleResize(Point current)
+        {
+            Rectangle r = selectionAtDragStart;
+            int dx = current.X - dragStart.X;
+            int dy = current.Y - dragStart.Y;
+
+            switch (activeHandle)
+            {
+                case ResizeHandle.TopLeft:
+                    r.X += dx;
+                    r.Y += dy;
+                    r.Width -= dx;
+                    r.Height -= dy;
+                    break;
+                case ResizeHandle.TopRight:
+                    r.Y += dy;
+                    r.Width += dx;
+                    r.Height -= dy;
+                    break;
+                case ResizeHandle.BottomLeft:
+                    r.X += dx;
+                    r.Width -= dx;
+                    r.Height += dy;
+                    break;
+                case ResizeHandle.BottomRight:
+                    r.Width += dx;
+                    r.Height += dy;
+                    break;
+            }
+
+            r.Width = Math.Max(minSelection, r.Width);
+            r.Height = Math.Max(minSelection, r.Height);
+            r.X = Math.Max(0, Math.Min(r.X, pictureBox.Width - r.Width));
+            r.Y = Math.Max(0, Math.Min(r.Y, pictureBox.Height - r.Height));
+
+            selectionRect = r;
+            pictureBox.Invalidate();
+        }
+
+        private void HandleMove(Point current)
+        {
+            int dx = current.X - dragStart.X;
+            int dy = current.Y - dragStart.Y;
+            Rectangle r = selectionAtDragStart;
+            r.X = Math.Max(0, Math.Min(pictureBox.Width - r.Width, r.X + dx));
+            r.Y = Math.Max(0, Math.Min(pictureBox.Height - r.Height, r.Y + dy));
+
+            selectionRect = r;
+            pictureBox.Invalidate();
+        }
+
+        private ResizeHandle HitTestHandle(Point point, Rectangle rect)
+        {
+            var handles = GetHandleRects(rect);
+            if (handles[0].Contains(point)) return ResizeHandle.TopLeft;
+            if (handles[1].Contains(point)) return ResizeHandle.TopRight;
+            if (handles[2].Contains(point)) return ResizeHandle.BottomLeft;
+            if (handles[3].Contains(point)) return ResizeHandle.BottomRight;
+            return ResizeHandle.None;
+        }
+
+        private Rectangle[] GetHandleRects(Rectangle rect)
+        {
+            int detect = radiusForHit();
+            return new[]
+            {
+                new Rectangle(rect.Left - detect, rect.Top - detect, detect * 2, detect * 2),
+                new Rectangle(rect.Right - detect, rect.Top - detect, detect * 2, detect * 2),
+                new Rectangle(rect.Left - detect, rect.Bottom - detect, detect * 2, detect * 2),
+                new Rectangle(rect.Right - detect, rect.Bottom - detect, detect * 2, detect * 2)
+            };
+        }
+
+        private int radiusForHit()
+        {
+            return Math.Max((handleLength + handleThickness) * 2, 64);
+        }
+
+        private void HideSelectionUI()
+        {
+            selectionActive = false;
+            animatingSelection = false;
+            isResizingSelection = false;
+            isMovingSelection = false;
+            activeHandle = ResizeHandle.None;
+            selectionAnimTimer?.Stop();
+            selectionAnimTimer?.Dispose();
+            HideActionMenu();
+            actionMenuPending = false;
+        }
+
+        private void HideActionMenu()
+        {
+            if (actionMenu != null)
+            {
+                actionMenu.Visible = false;
+            }
+        }
+
+        private void CreateActionMenu()
+        {
+            actionMenu = new FlowLayoutPanel();
+            actionMenu.AutoSize = true;
+            actionMenu.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            actionMenu.BackColor = Color.FromArgb(31, 31, 31);
+            actionMenu.Padding = new Padding(0);
+            actionMenu.Margin = new Padding(0);
+            actionMenu.FlowDirection = FlowDirection.LeftToRight;
+            actionMenu.WrapContents = false;
+            actionMenu.Visible = false;
+            actionMenu.Paint += (s, e) => ApplyPillMask(actionMenu);
+            actionMenu.Resize += (s, e) => ApplyPillMask(actionMenu);
+
+            Button BuildButton(string text, EventHandler onClick)
+            {
+                var btn = new Button();
+                btn.Text = text;
+                btn.AutoSize = true;
+                btn.FlatStyle = FlatStyle.Flat;
+                btn.FlatAppearance.BorderSize = 0;
+                btn.Font = new Font("Google Sans Flex", 10, FontStyle.Regular);
+                btn.ForeColor = Color.White;
+                btn.BackColor = Color.FromArgb(31, 31, 31);
+                btn.Padding = new Padding(18, 4, 18, 4);
+                btn.Margin = new Padding(0);
+                btn.Cursor = Cursors.Hand;
+                btn.Click += onClick;
+                btn.Paint += (s, e) => ApplyPillMask(btn);
+                btn.Resize += (s, e) => ApplyPillMask(btn);
+                return btn;
+            }
+
+            actionMenu.Controls.Add(BuildButton("Copiar", (s, e) => PerformSelectionAction(SelectionAction.Copy)));
+            actionMenu.Controls.Add(BuildButton("Buscar", (s, e) => PerformSelectionAction(SelectionAction.Search)));
+            actionMenu.Controls.Add(BuildButton("Preguntar", (s, e) => PerformSelectionAction(SelectionAction.Ask)));
+
+            overlayForm.Controls.Add(actionMenu);
+            actionMenu.BringToFront();
+        }
+
+        private void ApplyPillMask(Control control)
+        {
+            int radius = 20;
+            using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+            {
+                Rectangle r = new Rectangle(0, 0, control.Width, control.Height);
+                int d = radius * 2;
+                path.AddArc(r.Left, r.Top, d, d, 180, 90);
+                path.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+                path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+                path.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
+                path.CloseFigure();
+                control.Region = new Region(path);
+            }
+        }
+
+        private enum SelectionAction
+        {
+            Copy,
+            Search,
+            Ask
+        }
+
+        private void PerformSelectionAction(SelectionAction action)
+        {
+            if (!selectionActive && !animatingSelection) return;
+            Rectangle rect = selectionRect;
+            if (rect.Width <= 0 || rect.Height <= 0) return;
+
+            Bitmap cropped = CropSelection(rect);
+
+            switch (action)
+            {
+                case SelectionAction.Copy:
+                    try
+                    {
+                        Clipboard.SetImage(cropped);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"No se pudo copiar la imagen: {ex.Message}");
+                    }
+                    StartBrightnessAnimation(currentBrightness, 1f, true);
+                    break;
+                case SelectionAction.Search:
+                    StartSearchThread(cropped, true);
+                    break;
+                case SelectionAction.Ask:
+                    StartSearchThread(cropped, false);
+                    break;
+            }
+        }
+
+        private void StartSearchThread(Bitmap cropped, bool submitSearch)
+        {
+            Bitmap threadBitmap = (Bitmap)cropped.Clone();
+            StartBrightnessAnimation(currentBrightness, 1f, true);
+            Thread t = new Thread(() =>
+            {
+                try { AutomateGoogleSearch(threadBitmap, submitSearch); }
+                catch (Exception ex) { MessageBox.Show($"Error al enviar a Chrome: {ex.Message}"); }
+            });
+            t.SetApartmentState(ApartmentState.STA);
+            t.Start();
+        }
+
+        private Bitmap CropSelection(Rectangle rect)
+        {
+            Bitmap cropped = new Bitmap(rect.Width, rect.Height);
+            using (Graphics g = Graphics.FromImage(cropped))
+            {
+                g.DrawImage(originalImage, 0, 0, rect, GraphicsUnit.Pixel);
+            }
+            return cropped;
+        }
+
+        private void PositionActionMenu()
+        {
+            if (actionMenu == null) return;
+            if (!(selectionActive || animatingSelection))
+            {
+                actionMenu.Visible = false;
+                return;
+            }
+
+            if (isResizingSelection || isMovingSelection)
+            {
+                actionMenu.Visible = false;
+                actionMenuPending = true;
+                return;
+            }
+
+            Rectangle rect = animatingSelection ? animatedRect : selectionRect;
+            int menuMargin = 20;
+            int screenWidth = overlayForm.Width;
+            int screenHeight = overlayForm.Height;
+
+            actionMenu.PerformLayout();
+
+            int x = rect.Left + rect.Width / 2 - actionMenu.Width / 2;
+            x = Math.Max(menuMargin, Math.Min(screenWidth - actionMenu.Width - menuMargin, x));
+
+            int spaceAbove = rect.Top;
+            int spaceBelow = screenHeight - rect.Bottom;
+            int y;
+            if (spaceAbove > actionMenu.Height + 20)
+            {
+                y = rect.Top - actionMenu.Height - menuMargin;
+            }
+            else
+            {
+                y = rect.Bottom + menuMargin;
+            }
+
+            // Si queda fuera, reajustar dentro de pantalla
+            y = Math.Max(menuMargin, Math.Min(screenHeight - actionMenu.Height - menuMargin, y));
+
+            actionMenu.Location = new Point(x, y);
+            actionMenu.Visible = true;
+            actionMenu.BringToFront();
         }
 
         private Bitmap CaptureScreen()
@@ -441,7 +994,7 @@ namespace CircleToSearchCS
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-        private void AutomateGoogleSearch(Bitmap image)
+        private void AutomateGoogleSearch(Bitmap image, bool submitSearch)
         {
             string targetUrl = urls[currentModeIndex];
             SendToClipboard(image);
@@ -478,10 +1031,13 @@ namespace CircleToSearchCS
             // Pegar desde el portapapeles
             SendKeys.SendWait("^v");
             Thread.Sleep(500);
-            // Presiona Enter dos veces con 0,5s de espera entre cada uno
-            SendKeys.SendWait("{ENTER}");
-            Thread.Sleep(500);
-            SendKeys.SendWait("{ENTER}");
+            if (submitSearch)
+            {
+                // Presiona Enter dos veces con 0,5s de espera entre cada uno
+                SendKeys.SendWait("{ENTER}");
+                Thread.Sleep(500);
+                SendKeys.SendWait("{ENTER}");
+            }
         }
 
         private void SendToClipboard(Bitmap image)
