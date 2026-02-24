@@ -1,0 +1,44 @@
+# Build outputs
+bin/
+obj/
+out/
+artifacts/
+[Bb]uild/
+[Bb]in/
+[Oo]bj/
+
+# IDE settings
+.vs/
+.vscode/
+.idea/
+*.DotSettings
+
+# User-specific files
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.csproj.user
+*.vbproj.user
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
+
+# Test and logs
+TestResults/
+*.log
+
+# Publish artifacts
+app.publish/
+AppPackages/
+BundleArtifacts/
+
+# Cache files
+*.dbmdl
+*.opendb
+*.cache

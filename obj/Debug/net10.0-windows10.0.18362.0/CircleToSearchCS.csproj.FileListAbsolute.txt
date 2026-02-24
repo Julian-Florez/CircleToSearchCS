@@ -1,9 +1,3 @@
-C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.csproj.AssemblyReference.cache
-C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.AssemblyInfoInputs.cache
-C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.AssemblyInfo.cs
-C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.csproj.CoreCompileInputs.cache
-C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.sourcelink.json
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows10.0.18362.0\assets\icons\google.png
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows10.0.18362.0\assets\icons\search.png
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.exe
@@ -13,6 +7,12 @@ C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearch
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.pdb
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows10.0.18362.0\winrt.runtime.dll
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows10.0.18362.0\Microsoft.Windows.SDK.NET.dll
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.csproj.AssemblyReference.cache
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.AssemblyInfoInputs.cache
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.AssemblyInfo.cs
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.csproj.CoreCompileInputs.cache
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.sourcelink.json
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleTo.6061001F.Up2Date
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\CircleToSearchCS.dll
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows10.0.18362.0\refint\CircleToSearchCS.dll
