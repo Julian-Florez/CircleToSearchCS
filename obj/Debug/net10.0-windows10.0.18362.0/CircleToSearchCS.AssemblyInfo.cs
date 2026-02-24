@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CircleToSearchCS")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4c9d99c87e407bca4de0619b6114a217683449ea")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+06c8d930fc561142fe0f84bfafd9cceea910d84c")]
 [assembly: System.Reflection.AssemblyProductAttribute("CircleToSearchCS")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CircleToSearchCS")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

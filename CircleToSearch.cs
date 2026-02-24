@@ -1011,6 +1011,11 @@ namespace CircleToSearchCS
             if (selectionIsText)
             {
                 string selectedText = GetSelectedText();
+                selectedText = selectedText
+                    .Replace("\r\n", " ")
+                    .Replace("\n", " ")
+                    .Replace("\r", " ")
+                    .Trim();
                 if (string.IsNullOrWhiteSpace(selectedText)) return;
 
                 switch (action)
