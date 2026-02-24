@@ -1,8 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "Lbwq1j0BMw4=",
+  "dgSpecHash": "ojfOXKauIIM=",
   "success": true,
   "projectFilePath": "C:\\Users\\Julian\\Proyectos\\CircleToSearch-Desktop\\CircleToSearchCS\\CircleToSearchCS\\CircleToSearchCS.csproj",
-  "expectedPackageFiles": [],
+  "expectedPackageFiles": [
+    "C:\\Users\\Julian\\.nuget\\packages\\microsoft.windows.cswinrt\\0.1.0-prerelease.200629.3\\microsoft.windows.cswinrt.0.1.0-prerelease.200629.3.nupkg.sha512",
+    "C:\\Users\\Julian\\.nuget\\packages\\microsoft.windows.sdk.net\\10.0.18362.6-preview\\microsoft.windows.sdk.net.10.0.18362.6-preview.nupkg.sha512",
+    "C:\\Users\\Julian\\.nuget\\packages\\microsoft.windows.sdk.net.ref\\10.0.18362.57\\microsoft.windows.sdk.net.ref.10.0.18362.57.nupkg.sha512"
+  ],
   "logs": []
 }

@@ -7,6 +7,11 @@ using System.Threading;
 using System.Runtime.InteropServices;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading.Tasks;
+using Windows.Graphics.Imaging;
+using Windows.Media.Ocr;
+using Windows.Storage.Streams;
 
 namespace CircleToSearchCS
 {
@@ -34,6 +39,14 @@ namespace CircleToSearchCS
         private string[] modes;
         private string[] urls;
 
+        // OCR y selección de texto
+        private List<TextRegion> textRegions = new List<TextRegion>();
+        private bool ocrReady;
+        private bool ocrErrorShown;
+        private bool selectionIsText;
+        private List<TextRegion> activeTextRegions = new List<TextRegion>();
+        private List<WordBox> selectedWords = new List<WordBox>();
+
         // Selección rectangular animada con handles y menú de acciones
 
         private Rectangle animatedRect;
@@ -43,7 +56,7 @@ namespace CircleToSearchCS
         private DateTime selectionAnimStart;
         private int selectionAnimDuration = 180;
         private const int handleSize = 28;
-        private const int handleThickness = 8;
+        private const int handleThickness = 6;
         private const int handleLength = 32;
         private const int glowSize = 100;
         private const int screenGlowSize = 500;
@@ -156,6 +169,8 @@ namespace CircleToSearchCS
             overlayForm.MouseWheel += OverlayForm_MouseWheel;
 
             CreateActionMenu();
+
+            StartOcrScan();
 
         }
 
@@ -440,6 +455,8 @@ namespace CircleToSearchCS
 
             DrawScreenGlow(e.Graphics);
 
+            DrawTextRegions(e.Graphics);
+
             if (selectionActive || animatingSelection)
             {
                 DrawSelectionOverlay(e.Graphics, animatingSelection ? animatedRect : selectionRect);
@@ -464,7 +481,7 @@ namespace CircleToSearchCS
             isDrawing = false;
             if (Config.MODE == "BOX")
             {
-                if (selectionRect.Width >= minSelection && selectionRect.Height >= minSelection)
+                if (selectionRect.Width >= 6 && selectionRect.Height >= 6)
                 {
                     FinalizeSelection(selectionRect);
                 }
@@ -478,7 +495,7 @@ namespace CircleToSearchCS
                     int maxX = points.Max(p => p.X);
                     int maxY = points.Max(p => p.Y);
                     var rect = new Rectangle(minX, minY, maxX - minX, maxY - minY);
-                    if (rect.Width >= minSelection && rect.Height >= minSelection)
+                    if (rect.Width >= 6 && rect.Height >= 6)
                     {
                         FinalizeSelection(rect);
                     }
@@ -490,6 +507,38 @@ namespace CircleToSearchCS
         {
             points.Clear();
             HideSelectionUI();
+
+            selectionIsText = false;
+            selectedWords.Clear();
+            activeTextRegions.Clear();
+
+            bool useText = ShouldUseTextMode(rect);
+            if (useText)
+            {
+                activeTextRegions = FindRegionsForRect(rect);
+                if (activeTextRegions.Count == 0)
+                {
+                    pictureBox.Invalidate();
+                    return;
+                }
+
+                selectionIsText = true;
+                selectionRect = ClampToRegions(rect, activeTextRegions);
+                UpdateTextSelection(selectionRect, true);
+                if (selectedWords.Count == 0)
+                {
+                    pictureBox.Invalidate();
+                    return;
+                }
+                StartSelectionAnimation(selectionRect);
+                return;
+            }
+
+            if (rect.Width < minSelection || rect.Height < minSelection)
+            {
+                pictureBox.Invalidate();
+                return;
+            }
 
             // Normalizar para evitar valores negativos
             selectionRect = new Rectangle(
@@ -697,6 +746,20 @@ namespace CircleToSearchCS
             return a;
         }
 
+        private void DrawTextRegions(Graphics g)
+        {
+            if (!ocrReady) return;
+
+            if (selectionIsText && selectedWords.Count > 0)
+            {
+                using var selFill = new SolidBrush(Color.FromArgb(120, 66, 135, 244));
+                foreach (var word in selectedWords)
+                {
+                    g.FillRectangle(selFill, word.Bounds);
+                }
+            }
+        }
+
         private void DrawHandles(Graphics g, Rectangle rect, int radius)
         {
             Color handleColor = Color.White;
@@ -754,40 +817,52 @@ namespace CircleToSearchCS
 
         private void HandleResize(Point current)
         {
-            Rectangle r = selectionAtDragStart;
-            int dx = current.X - dragStart.X;
-            int dy = current.Y - dragStart.Y;
+            var start = selectionAtDragStart;
+            int minW = selectionIsText ? 1 : minSelection;
+            int minH = selectionIsText ? 1 : minSelection;
+
+            int left = start.Left;
+            int top = start.Top;
+            int right = start.Right;
+            int bottom = start.Bottom;
+
+            int newLeft = left;
+            int newTop = top;
+            int newRight = right;
+            int newBottom = bottom;
 
             switch (activeHandle)
             {
                 case ResizeHandle.TopLeft:
-                    r.X += dx;
-                    r.Y += dy;
-                    r.Width -= dx;
-                    r.Height -= dy;
+                    newLeft = Math.Min(Math.Max(0, current.X), right - minW);
+                    newTop = Math.Min(Math.Max(0, current.Y), bottom - minH);
                     break;
                 case ResizeHandle.TopRight:
-                    r.Y += dy;
-                    r.Width += dx;
-                    r.Height -= dy;
+                    newRight = Math.Max(Math.Min(pictureBox.Width, current.X), left + minW);
+                    newTop = Math.Min(Math.Max(0, current.Y), bottom - minH);
                     break;
                 case ResizeHandle.BottomLeft:
-                    r.X += dx;
-                    r.Width -= dx;
-                    r.Height += dy;
+                    newLeft = Math.Min(Math.Max(0, current.X), right - minW);
+                    newBottom = Math.Max(Math.Min(pictureBox.Height, current.Y), top + minH);
                     break;
                 case ResizeHandle.BottomRight:
-                    r.Width += dx;
-                    r.Height += dy;
+                    newRight = Math.Max(Math.Min(pictureBox.Width, current.X), left + minW);
+                    newBottom = Math.Max(Math.Min(pictureBox.Height, current.Y), top + minH);
                     break;
             }
 
-            r.Width = Math.Max(minSelection, r.Width);
-            r.Height = Math.Max(minSelection, r.Height);
-            r.X = Math.Max(0, Math.Min(r.X, pictureBox.Width - r.Width));
-            r.Y = Math.Max(0, Math.Min(r.Y, pictureBox.Height - r.Height));
+            Rectangle r = Rectangle.FromLTRB(newLeft, newTop, newRight, newBottom);
 
-            selectionRect = r;
+            if (selectionIsText)
+            {
+                activeTextRegions = FindRegionsForRect(r);
+                r = ClampToRegions(r, activeTextRegions);
+                UpdateTextSelection(r, false);
+            }
+            else
+            {
+                selectionRect = r;
+            }
             pictureBox.Invalidate();
         }
 
@@ -799,7 +874,16 @@ namespace CircleToSearchCS
             r.X = Math.Max(0, Math.Min(pictureBox.Width - r.Width, r.X + dx));
             r.Y = Math.Max(0, Math.Min(pictureBox.Height - r.Height, r.Y + dy));
 
-            selectionRect = r;
+            if (selectionIsText)
+            {
+                activeTextRegions = FindRegionsForRect(r);
+                r = ClampToRegions(r, activeTextRegions);
+                UpdateTextSelection(r, false);
+            }
+            else
+            {
+                selectionRect = r;
+            }
             pictureBox.Invalidate();
         }
 
@@ -841,6 +925,9 @@ namespace CircleToSearchCS
             selectionAnimTimer?.Dispose();
             HideActionMenu();
             actionMenuPending = false;
+            selectionIsText = false;
+            selectedWords.Clear();
+            activeTextRegions.Clear();
         }
 
         private void HideActionMenu()
@@ -921,6 +1008,28 @@ namespace CircleToSearchCS
             Rectangle rect = selectionRect;
             if (rect.Width <= 0 || rect.Height <= 0) return;
 
+            if (selectionIsText)
+            {
+                string selectedText = GetSelectedText();
+                if (string.IsNullOrWhiteSpace(selectedText)) return;
+
+                switch (action)
+                {
+                    case SelectionAction.Copy:
+                        try { Clipboard.SetText(selectedText); }
+                        catch (Exception ex) { MessageBox.Show($"No se pudo copiar el texto: {ex.Message}"); }
+                        StartBrightnessAnimation(currentBrightness, 1f, true);
+                        break;
+                    case SelectionAction.Search:
+                        StartSimpleGoogleSearch(selectedText);
+                        break;
+                    case SelectionAction.Ask:
+                        StartTextSearchThread(selectedText, false);
+                        break;
+                }
+                return;
+            }
+
             Bitmap cropped = CropSelection(rect);
 
             switch (action)
@@ -956,6 +1065,33 @@ namespace CircleToSearchCS
             });
             t.SetApartmentState(ApartmentState.STA);
             t.Start();
+        }
+
+        private void StartTextSearchThread(string text, bool submitSearch)
+        {
+            string textToSend = text;
+            StartBrightnessAnimation(currentBrightness, 1f, true);
+            Thread t = new Thread(() =>
+            {
+                try { AutomateGoogleSearch(textToSend, submitSearch); }
+                catch (Exception ex) { MessageBox.Show($"Error al enviar a Chrome: {ex.Message}"); }
+            });
+            t.SetApartmentState(ApartmentState.STA);
+            t.Start();
+        }
+
+        private void StartSimpleGoogleSearch(string text)
+        {
+            StartBrightnessAnimation(currentBrightness, 1f, true);
+            try
+            {
+                string url = $"https://www.google.com/search?q={Uri.EscapeDataString(text)}";
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"No se pudo abrir la búsqueda: {ex.Message}");
+            }
         }
 
         private Bitmap CropSelection(Rectangle rect)
@@ -1054,17 +1190,23 @@ namespace CircleToSearchCS
 
         private void AutomateGoogleSearch(Bitmap image, bool submitSearch)
         {
-            string targetUrl = urls[currentModeIndex];
-            SendToClipboard(image);
+            SendToBrowser(urls[currentModeIndex], () => Clipboard.SetImage(image), submitSearch);
+        }
 
-            // Intentar encontrar una ventana de Chrome
+        private void AutomateGoogleSearch(string text, bool submitSearch)
+        {
+            SendToBrowser(urls[currentModeIndex], () => Clipboard.SetText(text), submitSearch);
+        }
+
+        private void SendToBrowser(string targetUrl, Action prepareClipboard, bool submitSearch)
+        {
+            prepareClipboard();
+
             IntPtr chromeHandle = FindWindow("Chrome_WidgetWin_1", null);
             if (chromeHandle == IntPtr.Zero)
             {
-                // Chrome no está abierto, abrirlo
                 Process.Start(new ProcessStartInfo(targetUrl) { UseShellExecute = true });
                 Thread.Sleep((int)(Config.BROWSER_LOAD_WAIT_TIME * 1000));
-                // Intentar encontrar la ventana de Chrome de nuevo
                 int retries = 10;
                 while (chromeHandle == IntPtr.Zero && retries-- > 0)
                 {
@@ -1074,33 +1216,308 @@ namespace CircleToSearchCS
             }
             else
             {
-                // Chrome ya está abierto, solo navegar a la URL
                 Process.Start(new ProcessStartInfo(targetUrl) { UseShellExecute = true });
                 Thread.Sleep((int)(Config.BROWSER_LOAD_WAIT_TIME * 1000));
             }
 
-            // Traer Chrome al frente
             if (chromeHandle != IntPtr.Zero)
             {
                 SetForegroundWindow(chromeHandle);
                 Thread.Sleep(300);
             }
 
-            // Pegar desde el portapapeles
             SendKeys.SendWait("^v");
             Thread.Sleep(500);
             if (submitSearch)
             {
-                // Presiona Enter dos veces con 0,5s de espera entre cada uno
                 SendKeys.SendWait("{ENTER}");
                 Thread.Sleep(500);
                 SendKeys.SendWait("{ENTER}");
             }
         }
 
-        private void SendToClipboard(Bitmap image)
+        private async void StartOcrScan()
         {
-            Clipboard.SetImage(image);
+            ocrReady = false;
+            textRegions.Clear();
+
+            try
+            {
+                var engine = OcrEngine.TryCreateFromUserProfileLanguages() ??
+                             OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US"));
+                if (engine == null)
+                {
+                    ShowOcrError("OCR no disponible en este sistema.");
+                    return;
+                }
+
+                var softwareBitmap = await ToSoftwareBitmapAsync(originalImage);
+                var result = await engine.RecognizeAsync(softwareBitmap);
+                BuildTextRegions(result);
+
+                Debug.WriteLine($"OCR listo. Regiones detectadas: {textRegions.Count}");
+
+                if (overlayForm.IsHandleCreated)
+                {
+                    overlayForm.BeginInvoke(new Action(() =>
+                    {
+                        ocrReady = true;
+                        pictureBox.Invalidate();
+                    }));
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"OCR error: {ex}");
+                ShowOcrError($"No se pudo inicializar OCR: {ex.Message}");
+            }
+        }
+
+        private async Task<SoftwareBitmap> ToSoftwareBitmapAsync(Bitmap bmp)
+        {
+            using var ms = new MemoryStream();
+            bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
+            ms.Position = 0;
+
+            using InMemoryRandomAccessStream stream = new InMemoryRandomAccessStream();
+            await stream.WriteAsync(ms.ToArray().AsBuffer());
+            stream.Seek(0);
+
+            BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
+            SoftwareBitmap softwareBitmap = await decoder.GetSoftwareBitmapAsync();
+            return SoftwareBitmap.Convert(softwareBitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+        }
+
+        private void BuildTextRegions(OcrResult result)
+        {
+            var regions = new List<TextRegion>();
+            if (result?.Lines == null || result.Lines.Count == 0)
+            {
+                textRegions = regions;
+                return;
+            }
+            foreach (var line in result.Lines)
+            {
+                Rectangle lineBounds = RectFromWords(line.Words);
+                if (lineBounds.Width < 4 || lineBounds.Height < 4) continue;
+
+                TextRegion region = new TextRegion { Bounds = lineBounds };
+                foreach (var word in line.Words)
+                {
+                    region.Words.Add(new WordBox
+                    {
+                        Bounds = RectFromRect(word.BoundingRect),
+                        Text = word.Text
+                    });
+                }
+                regions.Add(region);
+            }
+
+            textRegions = regions;
+        }
+
+        private void ShowOcrError(string message)
+        {
+            if (ocrErrorShown) return;
+            ocrErrorShown = true;
+            if (overlayForm.IsHandleCreated)
+            {
+                overlayForm.BeginInvoke(new Action(() =>
+                    MessageBox.Show(overlayForm, message, "OCR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+            }
+        }
+
+        private Rectangle RectFromWords(IReadOnlyList<OcrWord> words)
+        {
+            int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+            foreach (var word in words)
+            {
+                Rectangle r = RectFromRect(word.BoundingRect);
+                minX = Math.Min(minX, r.Left);
+                minY = Math.Min(minY, r.Top);
+                maxX = Math.Max(maxX, r.Right);
+                maxY = Math.Max(maxY, r.Bottom);
+            }
+
+            if (minX == int.MaxValue) return Rectangle.Empty;
+            return Rectangle.FromLTRB(minX, minY, maxX, maxY);
+        }
+
+        private Rectangle RectFromRect(dynamic rect)
+        {
+            return new Rectangle((int)rect.X, (int)rect.Y, (int)rect.Width, (int)rect.Height);
+        }
+
+        private bool ShouldUseTextMode(Rectangle rect)
+        {
+            if (!ocrReady) return false;
+            var regions = FindRegionsForRect(rect);
+            if (regions.Count == 0) return false;
+
+            double rectArea = Math.Max(1.0, rect.Width * rect.Height);
+            double bestOverlapRectRatio = 0;
+            double bestAreaFactor = double.MaxValue;
+
+            foreach (var region in regions)
+            {
+                double overlapArea = OverlapArea(rect, region.Bounds);
+                double overlapRectRatio = overlapArea / rectArea;
+                double areaFactor = rectArea / Math.Max(1.0, region.Bounds.Width * region.Bounds.Height);
+
+                if (overlapRectRatio > bestOverlapRectRatio)
+                {
+                    bestOverlapRectRatio = overlapRectRatio;
+                    bestAreaFactor = areaFactor;
+                }
+            }
+
+            if (bestOverlapRectRatio < 0.3) return false; // más laxo
+
+            if (bestAreaFactor > 3.0 && bestOverlapRectRatio < 0.75) return false;
+
+            return true;
+        }
+
+        private List<TextRegion> FindRegionsForRect(Rectangle rect)
+        {
+            // Amplía más la ventana para incluir líneas arriba/abajo del párrafo
+            Rectangle expanded = Rectangle.Inflate(rect, 32, 32);
+            return textRegions.Where(r => r.Bounds.IntersectsWith(expanded)).ToList();
+        }
+
+        private Rectangle ClampToRegions(Rectangle rect, List<TextRegion> regions)
+        {
+            if (regions.Count == 0) return rect;
+            Rectangle union = UnionBounds(regions.Select(r => r.Bounds));
+
+            int maxWidth = Math.Max(1, union.Width);
+            int maxHeight = Math.Max(1, union.Height);
+
+            int x = Math.Max(union.Left, Math.Min(rect.X, union.Right - 1));
+            int y = Math.Max(union.Top, Math.Min(rect.Y, union.Bottom - 1));
+
+            int w = Math.Min(rect.Width, union.Right - x);
+            int h = Math.Min(rect.Height, union.Bottom - y);
+
+            w = Math.Max(1, Math.Min(w, maxWidth));
+            h = Math.Max(1, Math.Min(h, maxHeight));
+
+            return new Rectangle(x, y, w, h);
+        }
+
+        private double OverlapArea(Rectangle a, Rectangle b)
+        {
+            int x1 = Math.Max(a.Left, b.Left);
+            int y1 = Math.Max(a.Top, b.Top);
+            int x2 = Math.Min(a.Right, b.Right);
+            int y2 = Math.Min(a.Bottom, b.Bottom);
+            if (x2 <= x1 || y2 <= y1) return 0;
+            return (x2 - x1) * (y2 - y1);
+        }
+
+        private void UpdateTextSelection(Rectangle candidate, bool ensureWord)
+        {
+            if (activeTextRegions.Count == 0) return;
+            Rectangle clamped = ClampToRegions(candidate, activeTextRegions);
+
+            // Mantener el orden original de las líneas OCR: por Bounds.Top y luego por Bounds.Left
+            var orderedRegions = activeTextRegions
+                .OrderBy(r => r.Bounds.Top)
+                .ThenBy(r => r.Bounds.Left)
+                .ToList();
+
+            var words = new List<WordBox>();
+            foreach (var region in orderedRegions)
+            {
+                var lineWords = region.Words
+                    .Where(w => clamped.IntersectsWith(w.Bounds))
+                    .OrderBy(w => w.Bounds.Left)
+                    .ToList();
+                if (lineWords.Count > 0)
+                {
+                    words.AddRange(lineWords);
+                }
+            }
+
+            if (words.Count == 0 && ensureWord)
+            {
+                var center = new Point(clamped.Left + clamped.Width / 2, clamped.Top + clamped.Height / 2);
+                var nearest = activeTextRegions
+                    .SelectMany(r => r.Words)
+                    .OrderBy(w => DistanceToRect(center, w.Bounds))
+                    .FirstOrDefault();
+                if (nearest != null)
+                {
+                    words.Add(nearest);
+                }
+            }
+
+            if (words.Count == 0) return;
+
+            selectedWords = words;
+            selectionRect = UnionBounds(words.Select(w => w.Bounds));
+        }
+
+        private Rectangle UnionBounds(IEnumerable<Rectangle> rects)
+        {
+            int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+            foreach (var r in rects)
+            {
+                minX = Math.Min(minX, r.Left);
+                minY = Math.Min(minY, r.Top);
+                maxX = Math.Max(maxX, r.Right);
+                maxY = Math.Max(maxY, r.Bottom);
+            }
+
+            if (minX == int.MaxValue) return Rectangle.Empty;
+            return Rectangle.FromLTRB(minX, minY, maxX, maxY);
+        }
+
+        private double DistanceToRect(Point p, Rectangle rect)
+        {
+            int dx = Math.Max(rect.Left - p.X, 0);
+            dx = Math.Max(dx, p.X - rect.Right);
+            int dy = Math.Max(rect.Top - p.Y, 0);
+            dy = Math.Max(dy, p.Y - rect.Bottom);
+            return Math.Sqrt(dx * dx + dy * dy);
+        }
+
+        private string GetSelectedText()
+        {
+            if (selectedWords.Count == 0) return string.Empty;
+
+            // selectedWords ya está en orden de líneas y de izquierda a derecha
+            var sb = new System.Text.StringBuilder();
+            int? currentTop = null;
+            int lineGap = 12; // tolerancia vertical más amplia
+
+            foreach (var word in selectedWords)
+            {
+                if (currentTop == null || Math.Abs(word.Bounds.Top - currentTop.Value) > lineGap)
+                {
+                    if (sb.Length > 0) sb.AppendLine();
+                    currentTop = word.Bounds.Top;
+                }
+                else
+                {
+                    if (sb.Length > 0 && sb[^1] != '\n') sb.Append(' ');
+                }
+                sb.Append(word.Text);
+            }
+
+            return sb.ToString();
+        }
+
+        private class TextRegion
+        {
+            public Rectangle Bounds { get; set; }
+            public List<WordBox> Words { get; set; } = new List<WordBox>();
+        }
+
+        private class WordBox
+        {
+            public Rectangle Bounds { get; set; }
+            public string Text { get; set; } = string.Empty;
         }
 
         public void Dispose()

@@ -15,3 +15,7 @@ C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearch
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows\ref\CircleToSearchCS.dll
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows\assets\icons\google.png
 C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows\assets\icons\search.png
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows\CircleToSearchCS.csproj.AssemblyReference.cache
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows\winrt.runtime.dll
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\bin\Debug\net10.0-windows\Microsoft.Windows.SDK.NET.dll
+C:\Users\Julian\Proyectos\CircleToSearch-Desktop\CircleToSearchCS\CircleToSearchCS\obj\Debug\net10.0-windows\CircleTo.6061001F.Up2Date

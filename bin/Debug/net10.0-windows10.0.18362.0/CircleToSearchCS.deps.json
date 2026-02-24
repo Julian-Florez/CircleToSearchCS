@@ -1,0 +1,71 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "CircleToSearchCS/1.0.0": {
+        "dependencies": {
+          "Microsoft.Windows.SDK.NET": "10.0.18362.6-preview",
+          "runtimepack.Microsoft.Windows.SDK.NET.Ref": "10.0.18362.57"
+        },
+        "runtime": {
+          "CircleToSearchCS.dll": {}
+        }
+      },
+      "runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.18362.57": {
+        "runtime": {
+          "Microsoft.Windows.SDK.NET.dll": {
+            "assemblyVersion": "10.0.18362.38",
+            "fileVersion": "10.0.18362.55"
+          },
+          "WinRT.Runtime.dll": {
+            "assemblyVersion": "2.2.0.0",
+            "fileVersion": "2.2.0.48161"
+          }
+        }
+      },
+      "Microsoft.Windows.CsWinRT/0.1.0-prerelease.200629.3": {
+        "runtime": {
+          "lib/net5.0/winrt.runtime.dll": {
+            "assemblyVersion": "0.1.0.2153",
+            "fileVersion": "0.1.0.2153"
+          }
+        }
+      },
+      "Microsoft.Windows.SDK.NET/10.0.18362.6-preview": {
+        "dependencies": {
+          "Microsoft.Windows.CsWinRT": "0.1.0-prerelease.200629.3"
+        }
+      }
+    }
+  },
+  "libraries": {
+    "CircleToSearchCS/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.18362.57": {
+      "type": "runtimepack",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Microsoft.Windows.CsWinRT/0.1.0-prerelease.200629.3": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-+w4zLxMF9+dpdrpQCp7iup8Y+GGq9iZ3M1SmBTLvXT49m2PKk2e7Wx8XjomKWowMNUBKds6zlEAapweqcBpA7w==",
+      "path": "microsoft.windows.cswinrt/0.1.0-prerelease.200629.3",
+      "hashPath": "microsoft.windows.cswinrt.0.1.0-prerelease.200629.3.nupkg.sha512"
+    },
+    "Microsoft.Windows.SDK.NET/10.0.18362.6-preview": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-s4tEghfB6EomvcVVmK9TG2AhyWuqtFPp8jJ7ItgnCfjKZVNFwI8S/+IvV0v4bz8OdbhsfDzUvByQM4I/ABoXYg==",
+      "path": "microsoft.windows.sdk.net/10.0.18362.6-preview",
+      "hashPath": "microsoft.windows.sdk.net.10.0.18362.6-preview.nupkg.sha512"
+    }
+  }
+}
