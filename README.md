@@ -1,6 +1,13 @@
+
 # CircleToSearchCS
 
+
 CircleToSearchCS is a Windows desktop application that aims to clone, emulate, or simulate the "Circle to Search" functionality found on some Android devices, bringing it to the Windows environment.
+
+## Demo
+Below is a demonstration of the application's interface:
+
+![Demo](assets/demo.png)
 
 ## What is Circle to Search?
 "Circle to Search" is an innovative feature that allows users to select any part of the screen (for example, circling text or an image) to quickly and easily search for related information, without the need to manually copy and paste.
